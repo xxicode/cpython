@@ -119,14 +119,14 @@ three_dot_directive_re = re.compile(r"\.\.\. %s::" % all_directives)
 # :const:``None``
 # instead of:
 # :const:`None`
-double_backtick_role = re.compile(r"(?<!``)%s``" % all_roles)
+double_backtick_role = re.compile(f"(?<!``){all_roles}``")
 
 
 # Find role used with no backticks instead of simple backticks like:
 # :const:None
 # instead of:
 # :const:`None`
-role_with_no_backticks = re.compile(r"%s[^` ]" % all_roles)
+role_with_no_backticks = re.compile(f"{all_roles}[^` ]")
 
 
 default_role_re = re.compile(r"(^| )`\w([^`]*?\w)?`($| )")
@@ -160,7 +160,7 @@ def check_syntax(fn, lines):
     try:
         compile(code, fn, 'exec')
     except SyntaxError as err:
-        yield err.lineno, 'not compilable: %s' % err
+        yield (err.lineno, f'not compilable: {err}')
 
 
 @checker('.rst', severity=2)
@@ -315,15 +315,15 @@ Options:  -v       verbose (print all checked file names)
     ignore = []
     falsepos = False
     for opt, val in gopts:
-        if opt == '-v':
-            verbose = True
-        elif opt == '-f':
+        if opt == '-f':
             falsepos = True
-        elif opt == '-s':
-            severity = int(val)
         elif opt == '-i':
             ignore.append(abspath(val))
 
+        elif opt == '-s':
+            severity = int(val)
+        elif opt == '-v':
+            verbose = True
     if len(args) == 0:
         path = '.'
     elif len(args) == 1:
@@ -333,7 +333,7 @@ Options:  -v       verbose (print all checked file names)
         return 2
 
     if not exists(path):
-        print('Error: path %s does not exist' % path)
+        print(f'Error: path {path} does not exist')
         return 2
 
     count = defaultdict(int)
@@ -359,13 +359,13 @@ Options:  -v       verbose (print all checked file names)
                 continue
 
             if verbose:
-                print('Checking %s...' % fn)
+                print(f'Checking {fn}...')
 
             try:
                 with open(fn, 'r', encoding='utf-8') as f:
                     lines = list(f)
             except (IOError, OSError) as err:
-                print('%s: cannot open: %s' % (fn, err))
+                print(f'{fn}: cannot open: {err}')
                 count[4] += 1
                 continue
 
@@ -379,16 +379,15 @@ Options:  -v       verbose (print all checked file names)
                         count[csev] += 1
     if verbose:
         print()
-    if not count:
-        if severity > 1:
-            print('No problems with severity >= %d found.' % severity)
-        else:
-            print('No problems found.')
-    else:
+    if count:
         for severity in sorted(count):
             number = count[severity]
             print('%d problem%s with severity %d found.' %
                   (number, number > 1 and 's' or '', severity))
+    elif severity > 1:
+        print('No problems with severity >= %d found.' % severity)
+    else:
+        print('No problems found.')
     return int(bool(count))
 
 

@@ -54,17 +54,16 @@ def _is_sunder(name):
 
 def _is_private(cls_name, name):
     # do not use `re` as `re` imports `enum`
-    pattern = '_%s__' % (cls_name, )
+    pattern = f'_{cls_name}__'
     pat_len = len(pattern)
-    if (
+    return bool(
+        (
             len(name) > pat_len
             and name.startswith(pattern)
-            and name[pat_len:pat_len+1] != ['_']
+            and name[pat_len : pat_len + 1] != ['_']
             and (name[-1] != '_' or name[-2] != '_')
-        ):
-        return True
-    else:
-        return False
+        )
+    )
 
 def _is_single_bit(num):
     """
@@ -124,7 +123,7 @@ def bin(num, max_bits=None):
     if max_bits is not None:
         if len(digits) < max_bits:
             digits = (sign[-1] * max_bits + digits)[-max_bits:]
-    return "%s %s" % (sign, digits)
+    return f"{sign} {digits}"
 
 
 _auto_null = object()
@@ -151,23 +150,22 @@ class property(DynamicClassAttribute):
                 raise AttributeError(
                         '%s: no class attribute %r' % (ownerclass.__name__, self.name)
                         )
-        else:
-            if self.fget is None:
-                # check for member
-                if self.name in ownerclass._member_map_:
-                    import warnings
-                    warnings.warn(
-                            "accessing one member from another is not supported, "
-                            " and will be disabled in 3.12",
-                            DeprecationWarning,
-                            stacklevel=2,
-                            )
-                    return ownerclass._member_map_[self.name]
-                raise AttributeError(
-                        '%s: no instance attribute %r' % (ownerclass.__name__, self.name)
+        elif self.fget is None:
+            # check for member
+            if self.name in ownerclass._member_map_:
+                import warnings
+                warnings.warn(
+                        "accessing one member from another is not supported, "
+                        " and will be disabled in 3.12",
+                        DeprecationWarning,
+                        stacklevel=2,
                         )
-            else:
-                return self.fget(instance)
+                return ownerclass._member_map_[self.name]
+            raise AttributeError(
+                    '%s: no instance attribute %r' % (ownerclass.__name__, self.name)
+                    )
+        else:
+            return self.fget(instance)
 
     def __set__(self, instance, value):
         if self.fset is None:
@@ -206,10 +204,7 @@ class _proto_member:
         delattr(enum_class, member_name)
         # second step: create member based on enum_class
         value = self.value
-        if not isinstance(value, tuple):
-            args = (value, )
-        else:
-            args = value
+        args = (value, ) if not isinstance(value, tuple) else value
         if enum_class._member_type_ is tuple:   # special case for tuple enums
             args = (args, )     # wrap it one more time
         if not enum_class._use_args_:
@@ -267,10 +262,7 @@ class _proto_member:
                 else:
                     need_override = True
                     # keep looking for an enum.property
-        if descriptor and not need_override:
-            # previous enum.property found, no further action needed
-            pass
-        else:
+        if not descriptor or need_override:
             redirect = property()
             redirect.__set_name__(enum_class, member_name)
             if descriptor and need_override:
@@ -340,8 +332,7 @@ class _EnumDict(dict):
                 else:
                     value = list(value)
                 self._ignore = value
-                already = set(value) & set(self._member_names)
-                if already:
+                if already := set(value) & set(self._member_names):
                     raise ValueError(
                             '_ignore_ cannot specify already set names: %r'
                             % (already, )
@@ -416,10 +407,7 @@ class EnumType(type):
         #
         # grab member names
         member_names = classdict._member_names
-        #
-        # check for illegal enum names (any others?)
-        invalid_names = set(member_names) & {'mro', ''}
-        if invalid_names:
+        if invalid_names := set(member_names) & {'mro', ''}:
             raise ValueError('Invalid enum member name: {0}'.format(
                 ','.join(invalid_names)))
         #
@@ -518,7 +506,7 @@ class EnumType(type):
             delattr(enum_class, '_flag_mask_')
             delattr(enum_class, '_all_bits_')
             delattr(enum_class, '_inverted_')
-        elif Flag is not None and issubclass(enum_class, Flag):
+        elif Flag is not None:
             # ensure _all_bits_ is correct and there are no missing flags
             single_bit_total = 0
             multi_bit_total = 0
@@ -568,7 +556,7 @@ class EnumType(type):
         """
         return True
 
-    def __call__(cls, value, names=None, *, module=None, qualname=None, type=None, start=1, boundary=None):
+    def __call__(self, value, names=None, *, module=None, qualname=None, type=None, start=1, boundary=None):
         """
         Either returns an existing member, or creates a new enum class.
 
@@ -594,19 +582,19 @@ class EnumType(type):
         `type`, if set, will be mixed in as the first base class.
         """
         if names is None:  # simple value lookup
-            return cls.__new__(cls, value)
+            return self.__new__(self, value)
         # otherwise, functional API: we're creating a new Enum type
-        return cls._create_(
-                value,
-                names,
-                module=module,
-                qualname=qualname,
-                type=type,
-                start=start,
-                boundary=boundary,
-                )
+        return self._create_(
+            value,
+            names,
+            module=module,
+            qualname=qualname,
+            type=type,
+            start=start,
+            boundary=boundary,
+        )
 
-    def __contains__(cls, member):
+    def __contains__(self, member):
         if not isinstance(member, Enum):
             import warnings
             warnings.warn(
@@ -616,9 +604,9 @@ class EnumType(type):
                     stacklevel=2,
                     )
             raise TypeError(
-                "unsupported operand type(s) for 'in': '%s' and '%s'" % (
-                    type(member).__qualname__, cls.__class__.__qualname__))
-        return isinstance(member, cls) and member._name_ in cls._member_map_
+                f"unsupported operand type(s) for 'in': '{type(member).__qualname__}' and '{self.__class__.__qualname__}'"
+            )
+        return isinstance(member, self) and member._name_ in self._member_map_
 
     def __delattr__(cls, attr):
         # nicer error message when someone tries to delete an attribute
@@ -633,7 +621,7 @@ class EnumType(type):
                 + self._member_names_
                 )
 
-    def __getattr__(cls, name):
+    def __getattr__(self, name):
         """
         Return the enum member matching `name`
 
@@ -645,21 +633,21 @@ class EnumType(type):
         if _is_dunder(name):
             raise AttributeError(name)
         try:
-            return cls._member_map_[name]
+            return self._member_map_[name]
         except KeyError:
             raise AttributeError(name) from None
 
-    def __getitem__(cls, name):
-        return cls._member_map_[name]
+    def __getitem__(self, name):
+        return self._member_map_[name]
 
-    def __iter__(cls):
+    def __iter__(self):
         """
         Returns members in definition order.
         """
         return (cls._member_map_[name] for name in cls._member_names_)
 
-    def __len__(cls):
-        return len(cls._member_names_)
+    def __len__(self):
+        return len(self._member_names_)
 
     @_bltin_property
     def __members__(cls):
@@ -671,13 +659,13 @@ class EnumType(type):
         """
         return MappingProxyType(cls._member_map_)
 
-    def __repr__(cls):
-        if Flag is not None and issubclass(cls, Flag):
-            return "<flag %r>" % cls.__name__
+    def __repr__(self):
+        if Flag is not None and issubclass(self, Flag):
+            return "<flag %r>" % self.__name__
         else:
-            return "<enum %r>" % cls.__name__
+            return "<enum %r>" % self.__name__
 
-    def __reversed__(cls):
+    def __reversed__(self):
         """
         Returns members in reverse definition order.
         """
@@ -696,7 +684,7 @@ class EnumType(type):
             raise AttributeError('Cannot reassign member %r.' % (name, ))
         super().__setattr__(name, value)
 
-    def _create_(cls, class_name, names, *, module=None, qualname=None, type=None, start=1, boundary=None):
+    def _create_(self, class_name, names, *, module=None, qualname=None, type=None, start=1, boundary=None):
         """
         Convenience method to create a new Enum class.
 
@@ -708,9 +696,9 @@ class EnumType(type):
         * An iterable of (member name, value) pairs.
         * A mapping of member name -> value pairs.
         """
-        metacls = cls.__class__
-        bases = (cls, ) if type is None else (type, cls)
-        _, first_enum = cls._get_mixins_(cls, bases)
+        metacls = self.__class__
+        bases = (self, ) if type is None else (type, self)
+        _, first_enum = self._get_mixins_(self, bases)
         classdict = metacls.__prepare__(class_name, bases)
 
         # special processing needed for names?
@@ -748,7 +736,7 @@ class EnumType(type):
 
         return metacls.__new__(metacls, class_name, bases, classdict, boundary=boundary)
 
-    def _convert_(cls, name, module, filter, source=None, *, boundary=None):
+    def _convert_(self, name, module, filter, source=None, *, boundary=None):
 
         """
         Create a new Enum subclass that replaces a collection of global constants
@@ -759,10 +747,7 @@ class EnumType(type):
         # also, replace the __reduce_ex__ method so unpickling works in
         # previous Python versions
         module_globals = sys.modules[module].__dict__
-        if source:
-            source = source.__dict__
-        else:
-            source = module_globals
+        source = source.__dict__ if source else module_globals
         # _value2member_map_ is populated in the same order every time
         # for a consistent reverse mapping of number to name when there
         # are multiple names for the same number.
@@ -779,11 +764,11 @@ class EnumType(type):
         body = {t[0]: t[1] for t in members}
         body['__module__'] = module
         tmp_cls = type(name, (object, ), body)
-        cls = _simple_enum(etype=cls, boundary=boundary or KEEP)(tmp_cls)
-        cls.__reduce_ex__ = _reduce_ex_by_global_name
-        global_enum(cls)
-        module_globals[name] = cls
-        return cls
+        self = _simple_enum(etype=self, boundary=boundary or KEEP)(tmp_cls)
+        self.__reduce_ex__ = _reduce_ex_by_global_name
+        global_enum(self)
+        module_globals[name] = self
+        return self
 
     @staticmethod
     def _check_for_existing_members(class_name, bases):
@@ -881,10 +866,10 @@ class EnumType(type):
         # if a non-object.__new__ is used then whatever value/tuple was
         # assigned to the enum member name will be passed to __new__ and to the
         # new enum member's __init__
-        if first_enum is None or __new__ in (Enum.__new__, object.__new__):
-            use_args = False
-        else:
-            use_args = True
+        use_args = first_enum is not None and __new__ not in (
+            Enum.__new__,
+            object.__new__,
+        )
         return __new__, save_new, use_args
 EnumMeta = EnumType
 
@@ -947,7 +932,7 @@ class Enum(metaclass=EnumType):
             exc = None
             ve_exc = None
 
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(self, start, count, last_values):
         """
         Generate the next value when not given.
 
@@ -969,10 +954,10 @@ class Enum(metaclass=EnumType):
         return None
 
     def __repr__(self):
-        return "%s.%s" % ( self.__class__.__name__, self._name_)
+        return f"{self.__class__.__name__}.{self._name_}"
 
     def __str__(self):
-        return "%s" % (self._name_, )
+        return f"{self._name_}"
 
     def __dir__(self):
         """
@@ -1045,7 +1030,7 @@ class IntEnum(int, Enum):
     """
 
     def __str__(self):
-        return "%s" % (self._name_, )
+        return f"{self._name_}"
 
     def __format__(self, format_spec):
         """
@@ -1090,11 +1075,11 @@ class StrEnum(str, Enum):
 
     __format__ = str.__format__
 
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(self, start, count, last_values):
         """
         Return the lower-cased version of the member name.
         """
-        return name.lower()
+        return self.lower()
 
 
 def _reduce_ex_by_global_name(self, proto):
@@ -1120,7 +1105,7 @@ class Flag(Enum, boundary=STRICT):
     Support for flags
     """
 
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(self, start, count, last_values):
         """
         Generate the next value when not given.
 
@@ -1243,8 +1228,8 @@ class Flag(Enum, boundary=STRICT):
         """
         if not isinstance(other, self.__class__):
             raise TypeError(
-                "unsupported operand type(s) for 'in': '%s' and '%s'" % (
-                    type(other).__qualname__, self.__class__.__qualname__))
+                f"unsupported operand type(s) for 'in': '{type(other).__qualname__}' and '{self.__class__.__qualname__}'"
+            )
         if other._value_ == 0 or self._value_ == 0:
             return False
         return other._value_ & self._value_ == other._value_
@@ -1263,24 +1248,22 @@ class Flag(Enum, boundary=STRICT):
         if self._name_ is None:
             return "0x%x" % (self._value_, )
         if _is_single_bit(self._value_):
-            return '%s.%s' % (cls_name, self._name_)
+            return f'{cls_name}.{self._name_}'
         if self._boundary_ is not FlagBoundary.KEEP:
-            return '%s.' % cls_name + ('|%s.' % cls_name).join(self.name.split('|'))
-        else:
-            name = []
-            for n in self._name_.split('|'):
-                if n.startswith('0'):
-                    name.append(n)
-                else:
-                    name.append('%s.%s' % (cls_name, n))
-            return '|'.join(name)
+            return f'{cls_name}.' + f'|{cls_name}.'.join(self.name.split('|'))
+        name = []
+        for n in self._name_.split('|'):
+            if n.startswith('0'):
+                name.append(n)
+            else:
+                name.append(f'{cls_name}.{n}')
+        return '|'.join(name)
 
     def __str__(self):
-        cls = self.__class__
-        if self._name_ is None:
-            return '%s(%x)' % (cls.__name__, self._value_)
-        else:
+        if self._name_ is not None:
             return self._name_
+        cls = self.__class__
+        return '%s(%x)' % (cls.__name__, self._value_)
 
     def __bool__(self):
         return bool(self._value_)
@@ -1323,9 +1306,7 @@ class IntFlag(int, Flag, boundary=EJECT):
         Returns format using actual value unless __str__ has been overridden.
         """
         str_overridden = type(self).__str__ != Flag.__str__
-        value = self
-        if not str_overridden:
-            value = self._value_
+        value = self._value_ if not str_overridden else self
         return int.__format__(value, format_spec)
 
     def __or__(self, other):
@@ -1373,21 +1354,20 @@ def unique(enumeration):
     """
     Class decorator for enumerations ensuring unique member values.
     """
-    duplicates = []
-    for name, member in enumeration.__members__.items():
-        if name != member.name:
-            duplicates.append((name, member.name))
-    if duplicates:
+    if duplicates := [
+        (name, member.name)
+        for name, member in enumeration.__members__.items()
+        if name != member.name
+    ]:
         alias_details = ', '.join(
-                ["%s -> %s" % (alias, name) for (alias, name) in duplicates])
+            [f"{alias} -> {name}" for (alias, name) in duplicates]
+        )
         raise ValueError('duplicate values found in %r: %s' %
                 (enumeration, alias_details))
     return enumeration
 
 def _power_of_two(value):
-    if value < 1:
-        return False
-    return value == 2 ** _high_bit(value)
+    return False if value < 1 else value == 2 ** _high_bit(value)
 
 def global_enum_repr(self):
     """
@@ -1396,7 +1376,7 @@ def global_enum_repr(self):
     the module is the last module in case of a multi-module name
     """
     module = self.__class__.__module__.split('.')[-1]
-    return '%s.%s' % (module, self._name_)
+    return f'{module}.{self._name_}'
 
 def global_flag_repr(self):
     """
@@ -1405,21 +1385,20 @@ def global_flag_repr(self):
     the module is the last module in case of a multi-module name
     """
     module = self.__class__.__module__.split('.')[-1]
-    cls_name = self.__class__.__name__
     if self._name_ is None:
+        cls_name = self.__class__.__name__
         return "%s.%s(0x%x)" % (module, cls_name, self._value_)
     if _is_single_bit(self):
-        return '%s.%s' % (module, self._name_)
+        return f'{module}.{self._name_}'
     if self._boundary_ is not FlagBoundary.KEEP:
-        return '|'.join(['%s.%s' % (module, name) for name in self.name.split('|')])
-    else:
-        name = []
-        for n in self._name_.split('|'):
-            if n.startswith('0'):
-                name.append(n)
-            else:
-                name.append('%s.%s' % (module, n))
-        return '|'.join(name)
+        return '|'.join([f'{module}.{name}' for name in self.name.split('|')])
+    name = []
+    for n in self._name_.split('|'):
+        if n.startswith('0'):
+            name.append(n)
+        else:
+            name.append(f'{module}.{n}')
+    return '|'.join(name)
 
 
 def global_enum(cls):
@@ -1428,10 +1407,7 @@ def global_enum(cls):
     instead of its class; also exports all members to the enum's module's
     global namespace
     """
-    if issubclass(cls, Flag):
-        cls.__repr__ = global_flag_repr
-    else:
-        cls.__repr__ = global_enum_repr
+    cls.__repr__ = global_flag_repr if issubclass(cls, Flag) else global_enum_repr
     sys.modules[cls.__module__].__dict__.update(cls.__members__)
     return cls
 
@@ -1616,32 +1592,32 @@ class verify:
             raise TypeError("the 'verify' decorator only works with Enum and Flag")
         for check in checks:
             if check is UNIQUE:
-                # check for duplicate names
-                duplicates = []
-                for name, member in enumeration.__members__.items():
-                    if name != member.name:
-                        duplicates.append((name, member.name))
-                if duplicates:
+                if duplicates := [
+                    (name, member.name)
+                    for name, member in enumeration.__members__.items()
+                    if name != member.name
+                ]:
                     alias_details = ', '.join(
-                            ["%s -> %s" % (alias, name) for (alias, name) in duplicates])
+                        [f"{alias} -> {name}" for (alias, name) in duplicates]
+                    )
                     raise ValueError('aliases found in %r: %s' %
                             (enumeration, alias_details))
             elif check is CONTINUOUS:
-                values = set(e.value for e in enumeration)
+                values = {e.value for e in enumeration}
                 if len(values) < 2:
                     continue
                 low, high = min(values), max(values)
                 missing = []
-                if enum_type == 'flag':
-                    # check for powers of two
-                    for i in range(_high_bit(low)+1, _high_bit(high)):
-                        if 2**i not in values:
-                            missing.append(2**i)
-                elif enum_type == 'enum':
+                if enum_type == 'enum':
                     # check for powers of one
-                    for i in range(low+1, high):
-                        if i not in values:
-                            missing.append(i)
+                    missing.extend(i for i in range(low+1, high) if i not in values)
+                elif enum_type == 'flag':
+                    # check for powers of two
+                    missing.extend(
+                        2**i
+                        for i in range(_high_bit(low) + 1, _high_bit(high))
+                        if 2**i not in values
+                    )
                 else:
                     raise Exception('verify: unknown type %r' % enum_type)
                 if missing:
@@ -1660,17 +1636,14 @@ class verify:
                         # not an alias
                         continue
                     values = list(_iter_bits_lsb(alias.value))
-                    missed = [v for v in values if v not in member_values]
-                    if missed:
+                    if missed := [v for v in values if v not in member_values]:
                         missing_names.append(name)
                         missing_value |= reduce(_or_, missed)
                 if missing_names:
                     if len(missing_names) == 1:
-                        alias = 'alias %s is missing' % missing_names[0]
+                        alias = f'alias {missing_names[0]} is missing'
                     else:
-                        alias = 'aliases %s and %s are missing' % (
-                                ', '.join(missing_names[:-1]), missing_names[-1]
-                                )
+                        alias = f"aliases {', '.join(missing_names[:-1])} and {missing_names[-1]} are missing"
                     if _is_single_bit(missing_value):
                         value = 'value 0x%x' % missing_value
                     else:
@@ -1711,11 +1684,11 @@ def _test_simple_enum(checked_enum, simple_enum):
                 + list(simple_enum._member_map_.keys())
                 )
         for key in set(checked_keys + simple_keys):
-            if key in ('__module__', '_member_map_', '_value2member_map_'):
+            if (
+                key in ('__module__', '_member_map_', '_value2member_map_')
+                or key in member_names
+            ):
                 # keys known to be different
-                continue
-            elif key in member_names:
-                # members are checked below
                 continue
             elif key not in simple_keys:
                 failed.append("missing key: %r" % (key, ))
@@ -1795,10 +1768,6 @@ def _test_simple_enum(checked_enum, simple_enum):
                             "checked -> %r" % (checked_method, ),
                             "simple -> %r" % (simple_method, ),
                             ))
-            else:
-                # if the method existed in only one of the enums, it will have been caught
-                # in the first checks above
-                pass
     if failed:
         raise TypeError('enum mismatch:\n   %s' % '\n   '.join(failed))
 
@@ -1812,10 +1781,7 @@ def _old_convert_(etype, name, module, filter, source=None, *, boundary=None):
     # also, replace the __reduce_ex__ method so unpickling works in
     # previous Python versions
     module_globals = sys.modules[module].__dict__
-    if source:
-        source = source.__dict__
-    else:
-        source = module_globals
+    source = source.__dict__ if source else module_globals
     # _value2member_map_ is populated in the same order every time
     # for a consistent reverse mapping of number to name when there
     # are multiple names for the same number.
